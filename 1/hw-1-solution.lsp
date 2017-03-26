@@ -58,8 +58,43 @@
 ;           with all gaps replaced by their values
 ; INPUTS:   atom: a symbol (possibly) representing a frame
 ; OUTPUT:   That frame with all bound gaps replaced by their values
+(defun EXPAND-ATOM (_atom)
+    (cond 
+        ((or (not (atom _atom)) (not (boundp _atom))) _atom)
+        ( T (eval _atom))
+    )
+)
+
 (defun EXPAND (atom)
-    'UNIMPLEMENTED
+    (EXPAND-ATOM atom)
+    ; (let ((atom-expanded (EXPAND-ATOM atom)))
+    ;     (cond
+    ;         ((listp atom-expanded) )
+    ;     )
+    ; )
+)
+
+(defun FILL-FRAME (frame)
+    (cond
+        ;( T sf)
+        ; no frames remaining
+        ((null frame) nil)
+        ((not (listp (first frame))) frame)
+        ( T (cons (list (first (first frame))
+        (EXPAND (second (first frame)))) 
+        (FILL-FRAME (rest frame))))
+    )
+)
+
+(defun EXPAND (_atom)
+    (cond
+        ; atom exists, evaluate if bound
+        ((not (listp _atom)) (if (boundp _atom) (EXPAND (eval _atom)) _atom))
+        ; frame of length 0 or 1
+        ((< (length _atom) 2) _atom)
+        ; call FILL-FRAME for the remainder
+        ( T (cons (first _atom) (FILL-FRAME (rest _atom))))
+    )
 )
 
 ; -----------------------------------------------------------------------------
@@ -73,13 +108,75 @@
 ;           filler: a filler to place in the corresponding slot
 ;           frame: the frame being operated on
 ; OUTPUT:   Frame with added / replaced slot-filler pair
+(defun FIND-IN-LIST (slot frame index)
+    (cond
+        ((not frame) -1) ; not found
+        ((equal (first frame) slot) index)
+        ( T (FIND-IN-LIST slot (rest frame) (+ index 1)))
+    )
+)
+
+(defun REMOVE-FROM-LIST (frame index)
+    (cond
+        ((>= index 0) (append (subseq frame 0 index) (nthcdr (+ index 2) frame)))
+        ( T frame)
+    )
+)
+
 (defun AMEND-SF (slot filler frame)
-    'UNIMPLEMENTED
+    (let* ((frame (EXPAND-ATOM frame)) (index (FIND-IN-LIST slot frame 0)) (new_list (REMOVE-FROM-LIST frame index)))
+        (append new_list (cons slot (list filler)))
+    )
 )
 
 ; -----------------------------------------------------------------------------
 
+(defun GET-LEN (frame)
+    (cond
+        ((listp frame) (length frame))
+        ( T 1 )
+    )
+)
 
+(defun FIRST-EQUAL (frame1 frame2)
+    (cond 
+        ; frames are both lists - compare first item from each
+        ((and (listp frame1) (listp frame2)) (equal (GET-FIRST frame1) (GET-FIRST frame2)))
+        ; frames are both non-lists - compare
+        ((and (not (listp frame1)) (not (listp frame2))) (equal frame1 frame2))
+        ; we assume frames differ in type because they're not both atoms or lists and these are the only types we're dealing with
+        ( T NIL )
+
+    )
+)
+
+(defun DELETE-SLOT (frame slot)
+    (cond
+        ; no slots remain, except possibly the predicate which can't be removed; do nothing
+        ((< (GET-LEN frame) 2) frame)
+        ; first slot matches; remove it
+        ((equal (GET-FIRST (second frame)) slot) (cons (GET-FIRST frame) (nthcdr 2 frame)))
+        ; slot doesn't match, shorten the frame and continue searching 
+        ( T (append (DELETE-SLOT (cons (GET-FIRST frame) (nthcdr 2 frame)) slot) (list (second frame))))
+    )
+)
+(defun GET-FILLER (frame slot)
+    (cond
+        ; predicate without any slots, nothing to return
+        ((< (GET-LEN frame) 2) NIL)
+        ; first slot matches; return its contents 
+        ((equal slot (GET-FIRST (second frame))) (second (second frame)))
+        ; first slot doesn't match; shorten list and continue searching
+        ( T (GET-FILLER slot (cons (GET-FIRST frame) (nthcdr 2 frame))))
+    )
+)
+
+(defun GET-FIRST (frame)
+    (cond
+        ((listp frame) (first frame))
+        ( T frame )
+    )
+)
 ; FUNCTION: EQUAL-SF
 ; PURPOSE:  Boolean predicate which compares two frames and returns tr
 ; INPUTS:   frame1: FRAME (first frame to compare)
@@ -87,7 +184,19 @@
 ; OUTPUT:   T if frames have same slot-filler structure (order may vary),
 ;           NIL otherwise
 (defun EQUAL-SF (frame1 frame2)
-    'UNIMPLEMENTED
+    (cond
+        ; both frames are empty; they're equal
+        ((and (not frame1) (not frame2)) T)
+        ; lengths differ; frames cannot be equal
+        ((not (= (GET-LEN frame1) (GET-LEN frame2))) NIL)
+        ; predicates differ; frames cannot be equal
+        ((not (FIRST-EQUAL frame1 frame2)) NIL) 
+        ; frames are equal, single-length predicates
+        ((< (GET-LEN frame1) 2) T)
+        ; return equality with frame1's first list item && its remaining list
+        ( T (and (EQUAL-SF (GET-FILLER (GET-FIRST (second frame1)) frame1) (GET-FILLER (GET-FIRST (second frame1)) frame2))
+                 (EQUAL-SF (cons (GET-FIRST frame1) (nthcdr 2 frame1)) (DELETE-SLOT frame2 (GET-FIRST (second frame1)))))) 
+    ) 
 )
 
 ; -----------------------------------------------------------------------------
